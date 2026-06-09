@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>山梨県 クマ出没リアルタイムマップ</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        #map { height: 100%; width: 100%; }
+        #loading {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 10px 20px;
+            border-radius: 20px; z-index: 1000; font-size: 14px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">📡 最新の熊出没データを地図に配置中...</div>
+    <div id="map"></div>
+<script>
+    // 💡 このデータ部分は毎日午前中に全自動で書き換わります
+    const currentDatabase = [
+        { "date": "2026-05-20", "location": "北杜市大泉町", "details": "体長約1mの成獣1頭を目撃。山林へ逃走。" },
+        { "date": "2026-05-25", "location": "大月市賑岡町", "details": "林道脇の畑にて足跡および食痕を発見。" },
+        { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" }
+    ];
+
+    const map = L.map('map').setView([35.6639, 138.5683], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    async function getCoordinates(address) {
+        const query = address.includes("山梨県") ? address : "山梨県 " + address;
+        try {
+            const res = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+                return [data[0].geometry.coordinates[1], data[0].geometry.coordinates[0]];
+            }
+        } catch (e) { console.error(e); }
+        return null;
+    }
+
+    async function loadMap() {
+        const loadingDiv = document.getElementById('loading');
+        for (const record of currentDatabase) {
+            if (!record.location || record.location === "山梨県内") continue;
+            const coords = await getCoordinates(record.location);
+            if (coords) {
+                L.marker(coords).addTo(map)
+                    .bindPopup(`
+                        <strong style="color: #d9534f;">⚠️ クマ出没・目撃情報</strong><br>
+                        <b>日付:</b> ${record.date}<br>
+                        <b>場所:</b> ${record.location}<br>
+                        <b>状況:</b> ${record.details}
+                    `);
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        loadingDiv.style.display = 'none';
+    }
+    loadMap();
+</script>
+</body>
+</html>
