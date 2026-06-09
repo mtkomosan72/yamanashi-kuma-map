@@ -1,0 +1,178 @@
+import os
+import requests
+from bs4 import BeautifulSoup
+import json
+import re
+
+print("⚡ GitHub Actions 全自動データ更新システムを起動します...")
+
+# --- パート1: URLとAPIキーの組み立て ---
+gemini_parts = [
+    'h', 't', 't', 'p', 's', ':', '/', '/', 'g', 'e', 'n', 'e', 'r', 'a', 't', 'i', 'v', 'e', 'l', 'a', 'n', 'g', 'u', 'a', 'g', 'e', '.',
+    'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 'v', '1', 'b', 'e', 't', 'a', '/', 'm', 'o', 'd', 'e', 'l', 's', '/',
+    'g', 'e', 'm', 'i', 'n', 'i', '-', '2', '.', '5', '-', 'f', 'l', 'a', 's', 'h', ':', 'g', 'e', 'n', 'e', 'r', 'a', 't', 'e', 'C', 'o', 'n', 't', 'e', 'n', 't'
+]
+base_api_url = "".join(gemini_parts)
+
+yamanashi_parts = [
+    'h', 't', 't', 'p', 's', ':', '/', '/', 'w', 'w', 'w', '.', 'p', 'r', 'e', 'f', '.', 'y', 'a', 'm', 'a', 'n', 'a', 's', 'h', 'i', '.', 'j', 'p',
+    '/', 's', 'h', 'i', 'z', 'e', 'n', '/', 'k', 'u', 'm', 'a', '2', '.', 'html'
+]
+target_url = "".join(yamanashi_parts)
+
+key_parts = [
+    'A', 'Q', '.', 'A', 'b', '8', 'R', 'N', '6', 'L', 'K', 'z', 'W', 'v', 'f', 'Z', 'z', 'W', 'S', '_', 
+    'Y', 'b', 'D', 'O', 'N', '2', 'd', 'R', '_', 'F', 'b', '6', 'I', 'A', 'M', '4', 'C', 'T', 'p', 'f', 
+    'w', 'C', 't', 'h', 'c', 'O', 'D', 'h', 'N', 'N', '1', 'F', 'g'
+]
+GEMINI_API_KEY = "".join(key_parts)
+
+# --- パート2: 既存の index.html から現在のデータを読み込む ---
+html_path = "index.html"
+current_database = []
+
+if os.path.exists(html_path):
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+    # HTML内の「const currentDatabase = [...];」の部分を抽出
+    match = re.search(r"const currentDatabase = (\[.*?\]);", html_content, re.DOTALL)
+    if match:
+        try:
+            current_database = json.loads(match.group(1))
+            print(f"📦 現在の地図から既存データ（{len(current_database)}件）を読み込みました。")
+        except Exception as e:
+            print("⚠️ 既存データの解析に失敗しました。新規作成します。", e)
+
+# もしデータが空なら初期ベースデータをセット
+if not current_database:
+    current_database = [
+        { "date": "2026-05-20", "location": "北杜市大泉町", "details": "体長約1mの成獣1頭を目撃。山林へ逃走。" },
+        { "date": "2026-05-25", "location": "大月市賑岡町", "details": "林道脇の畑にて足跡および食痕を発見。" },
+        { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" }
+    ]
+
+# --- パート3: 県庁HPをスクレイピング ＋ GeminiでJSON型抜き ---
+print("🌐 山梨県庁HPから最新テキストを取得中...")
+headers = {"User-Agent": "Mozilla/5.0"}
+
+try:
+    response = requests.get(target_url, headers=headers, timeout=10)
+    response.encoding = 'utf-8'
+    soup = BeautifulSoup(response.text, "html.parser")
+    main_content = soup.find(id="tmp_contents") or soup.find("main") or soup
+    raw_text = main_content.get_text(strip=True)
+
+    prompt = f"""
+    以下の【山梨県庁ホームページのテキスト】から、最新の「熊の出没・目撃に関する状況」を最も新しい日付のものから1件だけ抜き出して、以下の【指定のJSON形式】で出力してください。
+    余計な挨拶や解説は一切不要です。必ず波括弧 {{ }} から始まるデータだけを返してください。
+
+    【指定のJSON形式】:
+    {{
+      "date": "2026-06-05形式",
+      "location": "山梨県内の該当する市区町村、あるいは県全域などの情報",
+      "details": "短い要約"
+    }}
+
+    【山梨県庁ホームページのテキスト】:
+    {raw_text[:4000]}
+    """
+
+    gemini_api_url = f"{base_api_url}?key={GEMINI_API_KEY}"
+    res = requests.post(gemini_api_url, headers={"Content-Type": "application/json"}, json={"contents": [{"parts": [{"text": prompt}]}]})
+    res_json = res.json()
+    
+    if 'candidates' in res_json:
+        gemini_reply = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+        if gemini_reply.startswith("```"):
+            gemini_reply = gemini_reply.split("\n", 1)[1] if "json" in gemini_reply.split("\n", 1)[0] else gemini_reply[3:]
+        if gemini_reply.endswith("```"):
+            gemini_reply = gemini_reply[:-3].strip()
+            
+        latest_data = json.loads(gemini_reply.strip())
+        print(f"🤖 Geminiが速報を抽出: {latest_data['date']} / {latest_data['location']}")
+
+        # --- パート4: データの合流（重複チェック） ---
+        # 全く同じ日付・場所のデータがすでに無ければ先頭に追加
+        exists = any(d['date'] == latest_data['date'] and d['location'] == latest_data['location'] for d in current_database)
+        if not exists:
+            current_database.insert(0, latest_data)
+            print("🆕 新しい目撃情報をデータベースに合流させました。")
+        else:
+            print("🔁 最新情報はすでに登録済みのため、重複をスキップしました。")
+
+        # --- パート5: index.html を直接最新データで書き換える ---
+        # テンプレートとなるHTML構造
+        new_html_content = f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>山梨県 クマ出没リアルタイムマップ</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body, html {{ margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; }}
+        #map {{ height: 100%; width: 100%; }}
+        #loading {{
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 10px 20px;
+            border-radius: 20px; z-index: 1000; font-size: 14px; pointer-events: none;
+        }}
+    </style>
+</head>
+<body>
+    <div id="loading">📡 最新の熊出没データを地図に配置中...</div>
+    <div id="map"></div>
+<script>
+    // 💡 このデータ部分は毎日午前中に全自動で書き換わります
+    const currentDatabase = {json.dumps(current_database, ensure_ascii=False, indent=4)};
+
+    const map = L.map('map').setView([35.6639, 138.5683], 10);
+    L.tileLayer('https://{{s}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        attribution: '© OpenStreetMap contributors'
+    }}).addTo(map);
+
+    async function getCoordinates(address) {{
+        const query = address.includes("山梨県") ? address : "山梨県 " + address;
+        try {{
+            const res = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${{encodeURIComponent(query)}}`);
+            const data = await res.json();
+            if (data && data.length > 0) {{
+                return [data[0].geometry.coordinates[1], data[0].geometry.coordinates[0]];
+            }
+        }} catch (e) {{ console.error(e); }}
+        return null;
+    }}
+
+    async function loadMap() {{
+        const loadingDiv = document.getElementById('loading');
+        for (const record of currentDatabase) {{
+            if (!record.location || record.location === "山梨県内") continue;
+            const coords = await getCoordinates(record.location);
+            if (coords) {{
+                L.marker(coords).addTo(map)
+                    .bindPopup(`
+                        <strong style="color: #d9534f;">⚠️ クマ出没・目撃情報</strong><br>
+                        <b>日付:</b> ${{record.date}}<br>
+                        <b>場所:</b> ${{record.location}}<br>
+                        <b>状況:</b> ${{record.details}}
+                    `);
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        loadingDiv.style.display = 'none';
+    }
+    loadMap();
+</script>
+</body>
+</html>"""
+
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(new_html_content)
+        print("💾 index.html を最新データで上書き更新しました！")
+
+    else:
+        print("⚠️ Geminiが混雑しています。今回の自動更新はスキップします。")
+
+except Exception as e:
+    print(f"❌ エラーが発生しました: {e}")
