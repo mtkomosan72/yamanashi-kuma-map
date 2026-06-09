@@ -1,0 +1,37 @@
+name: 山梨県クマ情報・毎日自動更新タイマー
+
+on:
+  schedule:
+    # 毎日日本時間の午前8:00（世界標準時の23:00）に自動起動
+    - cron: '0 23 * * *'
+  workflow_dispatch: # 手動で今すぐ動かすためのスイッチボタンも付けておきます
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # プログラムがindex.htmlを書き換えて保存する権限を与えます
+
+    steps:
+    - name: 1. 部屋のファイルをクラウドに引き出す
+      uses: actions/checkout@v4
+
+    - name: 2. クラウド上にPythonの環境を構築する
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 3. 必要なライブラリ（BeautifulSoup等）をインストール
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+
+    - name: 4. 自動データ更新プログラムを実行
+      run: python data_updater.py
+
+    - name: 5. 更新されたindex.htmlを部屋に自動で書き戻す（コミット）
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add index.html
+        git diff --cached --quiet || (git commit -m "🤖 自動タイマー：山梨県庁の最新データに更新" && git push)
