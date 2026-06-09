@@ -9,22 +9,53 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; }
         #map { height: 100%; width: 100%; }
+        
+        /* 📡 ローディング表示のスタイル */
         #loading {
             position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.8); color: white; padding: 10px 20px;
             border-radius: 20px; z-index: 1000; font-size: 14px; pointer-events: none;
         }
+
+        /* 📅 年度選択コントローラーのスタイル */
+        #filter-container {
+            position: absolute; top: 10px; right: 10px;
+            background: white; padding: 10px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000;
+            font-size: 14px;
+        }
+        #filter-container select {
+            padding: 5px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc;
+            cursor: pointer; font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <div id="loading">📡 最新の熊出没データを地図に配置中...</div>
+
+    <div id="loading">📡 クマ出没データを地図に配置中...</div>
+
+    <div id="filter-container">
+        <label for="year-select">📅 表示期間：</label>
+        <select id="year-select" onchange="changeYearFilter()">
+            <option value="all">全期間を表示</option>
+            <option value="2026">2026年度（令和8年）</option>
+            <option value="2027">2027年度（令和9年）</option>
+            <option value="2025">2025年度（手動追加データ）</option>
+        </select>
+    </div>
+
     <div id="map"></div>
+
 <script>
-    // 💡 このデータ部分は毎日午前中に全自動で書き換わります
+    // 💡 データベース（ここに2025年のテストデータを手動で3件足しました！）
     const currentDatabase = [
-        { "date": "2026-05-20", "location": "北杜市大泉町", "details": "体長約1mの成獣1頭を目撃。山林へ逃走。" },
+        { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" },
         { "date": "2026-05-25", "location": "大月市賑岡町", "details": "林道脇の畑にて足跡および食痕を発見。" },
-        { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" }
+        { "date": "2026-05-20", "location": "北杜市大泉町", "details": "体長約1mの成獣1頭を目撃。山林へ逃走。" },
+        // 👇 ここから下3件が、勉強のために手動で追加した2025年のデータです
+        { "date": "2025-10-15", "location": "甲府市御岳町", "details": "【手動データ】御岳昇仙峡付近の遊歩道にて目撃情報あり。" },
+        { "date": "2025-08-03", "location": "南アルプス市芦安芦倉", "details": "【手動データ】夜間、林道を横切る成獣1頭を車内から目撃。" },
+        { "date": "2025-05-12", "location": "都留市法能", "details": "【手動データ】民家の裏庭にある柿の木付近で引っかき傷を発見。" }
     ];
 
     const map = L.map('map').setView([35.6639, 138.5683], 10);
@@ -32,6 +63,10 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
+    // 地図上のピンを管理するためのグループ（入れ物）
+    const markerGroup = L.layerGroup().addTo(map);
+
+    // 住所から座標を取得する関数
     async function getCoordinates(address) {
         const query = address.includes("山梨県") ? address : "山梨県 " + address;
         try {
@@ -44,13 +79,26 @@
         return null;
     }
 
-    async function loadMap() {
+    // 🗺️ 地図にピンを描画するメイン関数
+    async function loadMap(selectedYear) {
         const loadingDiv = document.getElementById('loading');
+        loadingDiv.style.display = 'block'; // ローディングを表示
+        markerGroup.clearLayers(); // 一旦、今地図に出ているピンを全部消す（大掃除）
+
         for (const record of currentDatabase) {
             if (!record.location || record.location === "山梨県内") continue;
+
+            // 💡 【重要】選ばれた年度と、データの年度（日付の先頭4文字）が一致するかチェック
+            const recordYear = record.date.substring(0, 4); // "2026-06-01" から "2026" を切り出す
+            
+            if (selectedYear !== "all" && selectedYear !== recordYear) {
+                continue; // 年度の一致しないデータは無視して次のデータへ進む（スキップ）
+            }
+
+            // 一致したデータだけピンを打つ処理に進む
             const coords = await getCoordinates(record.location);
             if (coords) {
-                L.marker(coords).addTo(map)
+                L.marker(coords).addTo(markerGroup)
                     .bindPopup(`
                         <strong style="color: #d9534f;">⚠️ クマ出没・目撃情報</strong><br>
                         <b>日付:</b> ${record.date}<br>
@@ -60,9 +108,18 @@
             }
             await new Promise(resolve => setTimeout(resolve, 100));
         }
-        loadingDiv.style.display = 'none';
+        loadingDiv.style.display = 'none'; // ローディングを隠す
     }
-    loadMap();
+
+    // 📅 プルダウンが切り替わったときに呼び出される関数
+    function changeYearFilter() {
+        const selectEl = document.getElementById('year-select');
+        const selectedValue = selectEl.value; // "all", "2026", "2025" などが取得できる
+        loadMap(selectedValue); // 選ばれた年度で地図を再描画する
+    }
+
+    // 一番最初のページ読み込み時は「全期間（all）」で地図を起動する
+    loadMap("all");
 </script>
 </body>
 </html>
