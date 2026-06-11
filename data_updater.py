@@ -40,7 +40,7 @@ if os.path.exists(html_path):
         except Exception as e:
             print("⚠️ 既存データの解析に失敗しました。安全のため初期データで稼働します。")
 
-# 初期ベースデータ（2025年のデータも最初からここに美しく内蔵）
+# 初期ベースデータ
 if not current_database or len(current_database) < 3:
     current_database = [
         { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" },
@@ -150,7 +150,9 @@ try:
     const currentDatabase = {json.dumps(current_database, ensure_ascii=False, indent=4)};
 
     const map = L.map('map').setView([35.6639, 138.5683], 10);
-    L.tileLayer('https://{{s}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+    
+    // 💡 タイルの括弧を完全に保護しました（{{s}}, {{z}}, {{x}}, {{y}}）
+    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
         attribution: '© OpenStreetMap contributors'
     }}).addTo(map);
 
