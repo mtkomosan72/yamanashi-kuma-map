@@ -20,12 +20,8 @@ yamanashi_parts = [
 ]
 target_url = "".join(yamanashi_parts)
 
-key_parts = [
-    'A', 'Q', '.', 'A', 'b', '8', 'R', 'N', '6', 'L', 'K', 'z', 'W', 'v', 'f', 'Z', 'z', 'W', 'S', '_', 
-    'Y', 'b', 'D', 'O', 'N', '2', 'd', 'R', '_', 'F', 'b', '6', 'I', 'A', 'M', '4', 'C', 'T', 'p', 'f', 
-    'w', 'C', 't', 'h', 'c', 'O', 'D', 'h', 'N', 'N', '1', 'F', 'g'
-]
-GEMINI_API_KEY = "".join(key_parts)
+# GitHubの環境変数（Secrets）から本物の鍵を安全に読み込むプロ仕様に変更
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # --- パート2: 既存の index.html から現在のデータを読み込む ---
 html_path = "index.html"
