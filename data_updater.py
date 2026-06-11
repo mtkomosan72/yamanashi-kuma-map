@@ -101,7 +101,7 @@ try:
             print("🔁 最新情報はすでに登録済みのため、重複をスキップしました。")
 
         # --- パート5: index.html を直接最新データで書き換える ---
-        # テンプレートとなるHTML構造
+        # 💡 ロボットが明日から自動生成する新しい「年度切り替え付き」の地図構造です
         new_html_content = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -113,24 +113,50 @@ try:
     <style>
         body, html {{ margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; }}
         #map {{ height: 100%; width: 100%; }}
+        
         #loading {{
             position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.8); color: white; padding: 10px 20px;
             border-radius: 20px; z-index: 1000; font-size: 14px; pointer-events: none;
         }}
+
+        #filter-container {{
+            position: absolute; top: 10px; right: 10px;
+            background: white; padding: 10px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000;
+            font-size: 14px;
+        }}
+        #filter-container select {{
+            padding: 5px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc;
+            cursor: pointer; font-weight: bold;
+        }}
     </style>
 </head>
 <body>
-    <div id="loading">📡 最新の熊出没データを地図に配置中...</div>
+
+    <div id="loading">📡 クマ出没データを地図に配置中...</div>
+
+    <div id="filter-container">
+        <label for="year-select">📅 表示期間：</label>
+        <select id="year-select" onchange="changeYearFilter()">
+            <option value="all">全期間を表示</option>
+            <option value="2026">2026年度（令和8年）</option>
+            <option value="2027">2027年度（令和9年）</option>
+            <option value="2025">2025年度（手動追加データ）</option>
+        </select>
+    </div>
+
     <div id="map"></div>
+
 <script>
-    // 💡 このデータ部分は毎日午前中に全自動で書き換わります
     const currentDatabase = {json.dumps(current_database, ensure_ascii=False, indent=4)};
 
     const map = L.map('map').setView([35.6639, 138.5683], 10);
     L.tileLayer('https://{{s}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
         attribution: '© OpenStreetMap contributors'
     }}).addTo(map);
+
+    const markerGroup = L.layerGroup().addTo(map);
 
     async function getCoordinates(address) {{
         const query = address.includes("山梨県") ? address : "山梨県 " + address;
@@ -139,18 +165,27 @@ try:
             const data = await res.json();
             if (data && data.length > 0) {{
                 return [data[0].geometry.coordinates[1], data[0].geometry.coordinates[0]];
-            }
-        }} catch (e) {{ console.error(e); }}
+            }}
+        } catch (e) {{ console.error(e); }}
         return null;
     }}
 
-    async function loadMap() {{
+    async function loadMap(selectedYear) {{
         const loadingDiv = document.getElementById('loading');
+        loadingDiv.style.display = 'block';
+        markerGroup.clearLayers();
+
         for (const record of currentDatabase) {{
             if (!record.location || record.location === "山梨県内") continue;
+
+            const recordYear = record.date.substring(0, 4);
+            if (selectedYear !== "all" && selectedYear !== recordYear) {{
+                continue;
+            }}
+
             const coords = await getCoordinates(record.location);
             if (coords) {{
-                L.marker(coords).addTo(map)
+                L.marker(coords).addTo(markerGroup)
                     .bindPopup(`
                         <strong style="color: #d9534f;">⚠️ クマ出没・目撃情報</strong><br>
                         <b>日付:</b> ${{record.date}}<br>
@@ -162,7 +197,14 @@ try:
         }
         loadingDiv.style.display = 'none';
     }
-    loadMap();
+
+    function changeYearFilter() {{
+        const selectEl = document.getElementById('year-select');
+        const selectedValue = selectEl.value;
+        loadMap(selectedValue);
+    }}
+
+    loadMap("all");
 </script>
 </body>
 </html>"""
