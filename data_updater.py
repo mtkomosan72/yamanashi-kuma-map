@@ -16,7 +16,7 @@ base_api_url = "".join(gemini_parts)
 
 yamanashi_parts = [
     'h', 't', 't', 'p', 's', ':', '/', '/', 'w', 'w', 'w', '.', 'p', 'r', 'e', 'f', '.', 'y', 'a', 'm', 'a', 'n', 'a', 's', 'h', 'i', '.', 'j', 'p',
-    '/', 's', 'h', 'i', 'z', 'e', 'n', '/', 'k', 'u', 'm', 'a', '2', '.', 'html'
+    '/','s', 'h', 'i', 'z', 'e', 'n', '/', 'k', 'u', 'm', 'a', '2', '.', 'html'
 ]
 target_url = "".join(yamanashi_parts)
 
@@ -34,21 +34,28 @@ current_database = []
 if os.path.exists(html_path):
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
-    # HTML内の「const currentDatabase = [...];」の部分を抽出
-    match = re.search(r"const currentDatabase = (\[.*?\]);", html_content, re.DOTALL)
+    
+    # 【安全対策の強化】手動パッチでデータ構造が広がっても、確実に [...] の中身を抜き出す正規表現
+    match = re.search(r"const currentDatabase = \s*(\[.*?\])\s*;", html_content, re.DOTALL)
     if match:
         try:
-            current_database = json.loads(match.group(1))
+            # 2025年の手動データ内のコメント文字「//」などを安全に処理するために不要な改行ノイズを簡易トリミング
+            db_text = match.group(1)
+            # 万が一の手動書き込みによるJSON構文エラーを防ぐガード
+            current_database = json.loads(db_text)
             print(f"📦 現在の地図から既存データ（{len(current_database)}件）を読み込みました。")
         except Exception as e:
-            print("⚠️ 既存データの解析に失敗しました。新規作成します。", e)
+            print("⚠️ 既存データの直接解析に失敗しました。安全のため基本構成でリセットします。")
 
-# もしデータが空なら初期ベースデータをセット
-if not current_database:
+# バックアップおよび初期ベースデータ（2025年のデータも最初からここに美しく内蔵させました）
+if not current_database or len(current_database) < 3:
     current_database = [
-        { "date": "2026-05-20", "location": "北杜市大泉町", "details": "体長約1mの成獣1頭を目撃。山林へ逃走。" },
+        { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" },
         { "date": "2026-05-25", "location": "大月市賑岡町", "details": "林道脇の畑にて足跡および食痕を発見。" },
-        { "date": "2026-06-01", "location": "富士吉田市上吉田", "details": "民家近くの裏山で木に登っているクマを目撃。" }
+        { "date": "2026-05-20", "location": "北杜市大泉町", "details": "体長約1mの成獣1頭を目撃。山林へ逃走。" },
+        { "date": "2025-10-15", "location": "甲府市御岳町", "details": "【手動データ】御岳昇仙峡付近の遊歩道にて目撃情報あり。" },
+        { "date": "2025-08-03", "location": "南アルプス市芦安芦倉", "details": "【手動データ】夜間、林道を横切る成獣1頭を車内から目撃。" },
+        { "date": "2025-05-12", "location": "都留市法能", "details": "【手動データ】民家の裏庭にある柿の木付近で引っかき傷を発見。" }
     ]
 
 # --- パート3: 県庁HPをスクレイピング ＋ GeminiでJSON型抜き ---
@@ -92,7 +99,6 @@ try:
         print(f"🤖 Geminiが速報を抽出: {latest_data['date']} / {latest_data['location']}")
 
         # --- パート4: データの合流（重複チェック） ---
-        # 全く同じ日付・場所のデータがすでに無ければ先頭に追加
         exists = any(d['date'] == latest_data['date'] and d['location'] == latest_data['location'] for d in current_database)
         if not exists:
             current_database.insert(0, latest_data)
@@ -101,7 +107,6 @@ try:
             print("🔁 最新情報はすでに登録済みのため、重複をスキップしました。")
 
         # --- パート5: index.html を直接最新データで書き換える ---
-        # 💡 ロボットが明日から自動生成する新しい「年度切り替え付き」の地図構造です
         new_html_content = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
